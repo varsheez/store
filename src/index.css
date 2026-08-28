@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #fff0f4;
+  background-image: radial-gradient(#ffd6e4 1px, transparent 1px);
+  background-size: 20px 20px;
+  color: #1f2937;
+  font-family: 'Geist', sans-serif;
+}
