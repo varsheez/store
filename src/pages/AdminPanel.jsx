@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { LayoutDashboard, Bell, Link2, Code2, MessageSquare, LogOut, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Bell, Link2, Code2, MessageSquare, LogOut, ChevronDown, Tag, ShoppingCart } from 'lucide-react';
 
 export default function AdminPanel({ onNavigate }) {
   const navigate = useNavigate();
@@ -14,8 +14,12 @@ export default function AdminPanel({ onNavigate }) {
   const [scripts, setScripts] = useState([]);
   const [messages, setMessages] = useState([]);
 
-  // State Pengaturan Promo Timer (BloxyLucy)
-  const [promoTimer, setPromoTimer] = useState({ days: 33, hours: 12, minutes: 17, seconds: 10 });
+  // State Promo Target Date & Running Timer
+  const [targetPromoDate, setTargetPromoDate] = useState(null);
+  const [promoTimer, setPromoTimer] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  // Input Form Waktu Promo
+  const [inputTimer, setInputTimer] = useState({ days: 33, hours: 12, minutes: 17, seconds: 10 });
 
   // Popup Settings State
   const [popup, setPopup] = useState({
@@ -39,11 +43,13 @@ export default function AdminPanel({ onNavigate }) {
     donate_link: ''
   });
 
-  // Script Form State
+  // Script / Produk Form State (Diperbarui dengan Harga & Badge Custom)
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState('');
   const [placeId, setPlaceId] = useState('');
   const [developerName, setDeveloperName] = useState('');
+  const [price, setPrice] = useState(0); // Custom Harga
+  const [badgeText, setBadgeText] = useState('HOT'); // Custom Lencana
   const [isVerified, setIsVerified] = useState(true);
   const [status, setStatus] = useState('ACTIVE');
   const [executions, setExecutions] = useState(0);
@@ -57,6 +63,27 @@ export default function AdminPanel({ onNavigate }) {
       loadAdminData();
     }
   }, [isAuthenticated]);
+
+  // Hook interval agar Timer Promo Berjalan Realtime setiap detik
+  useEffect(() => {
+    if (!targetPromoDate) return;
+
+    const interval = setInterval(() => {
+      const diff = new Date(targetPromoDate).getTime() - new Date().getTime();
+      if (diff > 0) {
+        setPromoTimer({
+          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+          minutes: Math.floor((diff / (1000 * 60)) % 60),
+          seconds: Math.floor((diff / 1000) % 60),
+        });
+      } else {
+        setPromoTimer({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [targetPromoDate]);
 
   const handleLogin = (e) => {
     e?.preventDefault();
@@ -73,18 +100,10 @@ export default function AdminPanel({ onNavigate }) {
   };
 
   async function loadAdminData() {
-    // 1. Promo Timer
+    // 1. Load Promo Target Date
     const { data: promoData } = await supabase.from('promo_settings').select('*').eq('id', 1).maybeSingle();
     if (promoData && promoData.target_date) {
-      const diff = +new Date(promoData.target_date) - +new Date();
-      if (diff > 0) {
-        setPromoTimer({
-          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-          minutes: Math.floor((diff / 1000 / 60) % 60),
-          seconds: Math.floor((diff / 1000) % 60),
-        });
-      }
+      setTargetPromoDate(promoData.target_date);
     }
 
     // 2. Stats
@@ -99,7 +118,7 @@ export default function AdminPanel({ onNavigate }) {
     const { data: sets } = await supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
     if (sets) setSettings(sets);
 
-    // 5. Scripts
+    // 5. Scripts / Products
     const { data: scriptList } = await supabase.from('scripts').select('*').order('created_at', { ascending: false });
     if (scriptList) setScripts(scriptList);
 
@@ -110,10 +129,10 @@ export default function AdminPanel({ onNavigate }) {
 
   const savePromoTimer = async () => {
     const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + parseInt(promoTimer.days || 0));
-    targetDate.setHours(targetDate.getHours() + parseInt(promoTimer.hours || 0));
-    targetDate.setMinutes(targetDate.getMinutes() + parseInt(promoTimer.minutes || 0));
-    targetDate.setSeconds(targetDate.getSeconds() + parseInt(promoTimer.seconds || 0));
+    targetDate.setDate(targetDate.getDate() + parseInt(inputTimer.days || 0));
+    targetDate.setHours(targetDate.getHours() + parseInt(inputTimer.hours || 0));
+    targetDate.setMinutes(targetDate.getMinutes() + parseInt(inputTimer.minutes || 0));
+    targetDate.setSeconds(targetDate.getSeconds() + parseInt(inputTimer.seconds || 0));
 
     const { error } = await supabase.from('promo_settings').upsert({
       id: 1,
@@ -178,6 +197,8 @@ export default function AdminPanel({ onNavigate }) {
       title,
       place_id: placeId,
       developer_name: developerName,
+      price: parseFloat(price),
+      badge_text: badgeText,
       is_verified: isVerified,
       status,
       executions: parseInt(executions),
@@ -197,14 +218,16 @@ export default function AdminPanel({ onNavigate }) {
 
   const handleEdit = (s) => {
     setEditingId(s.id);
-    setTitle(s.title);
-    setPlaceId(s.place_id);
+    setTitle(s.title || '');
+    setPlaceId(s.place_id || '');
     setDeveloperName(s.developer_name || '');
+    setPrice(s.price || 0);
+    setBadgeText(s.badge_text || 'HOT');
     setIsVerified(s.is_verified !== false);
-    setStatus(s.status);
-    setExecutions(s.executions);
-    setVersion(s.version);
-    setDescription(s.description);
+    setStatus(s.status || 'ACTIVE');
+    setExecutions(s.executions || 0);
+    setVersion(s.version || 'v1.0.0');
+    setDescription(s.description || '');
   };
 
   const toggleArchive = async (s) => {
@@ -214,7 +237,7 @@ export default function AdminPanel({ onNavigate }) {
   };
 
   const handleDeleteScript = async (id) => {
-    if (confirm('Hapus script ini secara permanen?')) {
+    if (confirm('Hapus produk / script ini secara permanen?')) {
       await supabase.from('scripts').delete().eq('id', id);
       loadAdminData();
     }
@@ -225,6 +248,8 @@ export default function AdminPanel({ onNavigate }) {
     setTitle('');
     setPlaceId('');
     setDeveloperName('');
+    setPrice(0);
+    setBadgeText('HOT');
     setIsVerified(true);
     setStatus('ACTIVE');
     setExecutions(0);
@@ -245,7 +270,6 @@ export default function AdminPanel({ onNavigate }) {
     }
   };
 
-  // SCREEN LOGIN PERTAMA JIKA BELUM TEROTENTIKASI
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black/90 flex items-center justify-center p-4 font-sans relative">
@@ -280,7 +304,7 @@ export default function AdminPanel({ onNavigate }) {
     { id: 'dashboard', label: 'Dashboard & Promo', icon: LayoutDashboard },
     { id: 'popup', label: 'Popup Notifikasi', icon: Bell },
     { id: 'links', label: 'Tombol & Link', icon: Link2 },
-    { id: 'scripts', label: 'Collection Script', icon: Code2 },
+    { id: 'scripts', label: 'Katalog Produk & Script', icon: Code2 },
     { id: 'messages', label: 'Pesan Masuk', icon: MessageSquare },
   ];
 
@@ -302,7 +326,7 @@ export default function AdminPanel({ onNavigate }) {
           </button>
         </div>
 
-        {/* Tab Navigation Menu (Desktop & Tablet) */}
+        {/* Tab Navigation Menu */}
         <div className="hidden md:flex gap-2 border-b border-white/10 pb-4 overflow-x-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -324,7 +348,7 @@ export default function AdminPanel({ onNavigate }) {
           })}
         </div>
 
-        {/* Dropdown Navigation Menu (Mobile) */}
+        {/* Mobile Navigation */}
         <div className="md:hidden relative">
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -359,29 +383,40 @@ export default function AdminPanel({ onNavigate }) {
         {/* TAB 1: DASHBOARD STATS & PROMO TIMER */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Setting Timer Promo Berakhir */}
+            {/* Display Countdown Berjalan */}
+            <div className="glass-card rounded-2xl p-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-white/10">
+              <h3 className="text-xs font-mono text-gray-400 mb-2">STATUS TIMER PROMO AKTIF (REALTIME)</h3>
+              <div className="grid grid-cols-4 gap-2 text-center max-w-sm">
+                <div className="bg-black/50 p-2 rounded-xl"><span className="text-xl font-bold font-mono text-white">{promoTimer.days}</span><p className="text-[10px] text-gray-400">HARI</p></div>
+                <div className="bg-black/50 p-2 rounded-xl"><span className="text-xl font-bold font-mono text-white">{promoTimer.hours}</span><p className="text-[10px] text-gray-400">JAM</p></div>
+                <div className="bg-black/50 p-2 rounded-xl"><span className="text-xl font-bold font-mono text-white">{promoTimer.minutes}</span><p className="text-[10px] text-gray-400">MENIT</p></div>
+                <div className="bg-black/50 p-2 rounded-xl"><span className="text-xl font-bold font-mono text-white">{promoTimer.seconds}</span><p className="text-[10px] text-gray-400">DETIK</p></div>
+              </div>
+            </div>
+
+            {/* Form Setting Timer Promo Berakhir */}
             <div className="glass-card rounded-2xl p-6 space-y-4">
-              <h2 className="font-bold text-sm text-white border-b border-white/10 pb-2">PENGATURAN WAKTU PROMO BERAKHIR</h2>
+              <h2 className="font-bold text-sm text-white border-b border-white/10 pb-2">TURANKAN WAKTU PROMO BARU</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block font-mono text-xs text-gray-400 mb-1">Hari</label>
-                  <input type="number" value={promoTimer.days} onChange={(e) => setPromoTimer({ ...promoTimer, days: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
+                  <label className="block font-mono text-xs text-gray-400 mb-1">Tambah Hari</label>
+                  <input type="number" value={inputTimer.days} onChange={(e) => setInputTimer({ ...inputTimer, days: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block font-mono text-xs text-gray-400 mb-1">Jam</label>
-                  <input type="number" value={promoTimer.hours} onChange={(e) => setPromoTimer({ ...promoTimer, hours: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
+                  <label className="block font-mono text-xs text-gray-400 mb-1">Tambah Jam</label>
+                  <input type="number" value={inputTimer.hours} onChange={(e) => setInputTimer({ ...inputTimer, hours: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block font-mono text-xs text-gray-400 mb-1">Menit</label>
-                  <input type="number" value={promoTimer.minutes} onChange={(e) => setPromoTimer({ ...promoTimer, minutes: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
+                  <label className="block font-mono text-xs text-gray-400 mb-1">Tambah Menit</label>
+                  <input type="number" value={inputTimer.minutes} onChange={(e) => setInputTimer({ ...inputTimer, minutes: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block font-mono text-xs text-gray-400 mb-1">Detik</label>
-                  <input type="number" value={promoTimer.seconds} onChange={(e) => setPromoTimer({ ...promoTimer, seconds: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
+                  <label className="block font-mono text-xs text-gray-400 mb-1">Tambah Detik</label>
+                  <input type="number" value={inputTimer.seconds} onChange={(e) => setInputTimer({ ...inputTimer, seconds: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm text-white font-mono focus:outline-none" />
                 </div>
               </div>
               <button onClick={savePromoTimer} className="px-6 py-3 bg-white text-black font-extrabold text-xs rounded-xl hover:bg-gray-200 transition">
-                SIMPAN WAKTU PROMO
+                SETEL ULANG TIMER PROMO
               </button>
             </div>
 
@@ -424,20 +459,20 @@ export default function AdminPanel({ onNavigate }) {
                   type="text" 
                   value={popup.title} 
                   onChange={(e) => setPopup({ ...popup, title: e.target.value })} 
-                  placeholder="misal: Follow Channel WA BloxyLucy" 
+                  placeholder="misal: Promo Spesial & Updates!" 
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" 
                 />
               </div>
 
               <div>
                 <label className="block font-mono text-xs text-gray-400 mb-1">
-                  Isi Pesan / Konten (Bisa spasi/enter kebawah & sertakan URL link)
+                  Isi Pesan / Konten (Bisa spasi/enter & URL Link)
                 </label>
                 <textarea 
                   rows="6" 
                   value={popup.content} 
                   onChange={(e) => setPopup({ ...popup, content: e.target.value })} 
-                  placeholder="Gunakan Enter untuk baris baru." 
+                  placeholder="Isikan pengumuman lengkap..." 
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none font-sans leading-relaxed resize-none" 
                 />
               </div>
@@ -454,7 +489,6 @@ export default function AdminPanel({ onNavigate }) {
           <div className="glass-card rounded-2xl p-6 space-y-4 animate-in fade-in duration-200">
             <h2 className="font-bold text-sm text-white border-b border-white/10 pb-2">PENGATURAN TOMBOL & REDIRECT LINK</h2>
             
-            {/* Discord */}
             <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-xs text-white">Tombol Discord Navbar</span>
@@ -469,7 +503,6 @@ export default function AdminPanel({ onNavigate }) {
               </div>
             </div>
 
-            {/* Dev Tools */}
             <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-xs text-white">Tombol Developer Tools</span>
@@ -484,7 +517,6 @@ export default function AdminPanel({ onNavigate }) {
               </div>
             </div>
 
-            {/* Saweria */}
             <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-xs text-white">Tombol Support / Donasi</span>
@@ -505,45 +537,58 @@ export default function AdminPanel({ onNavigate }) {
           </div>
         )}
 
-        {/* TAB 4: COLLECTION SCRIPT */}
+        {/* TAB 4: KATALOG PRODUK & SCRIPT CUSTOM */}
         {activeTab === 'scripts' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Form Script */}
+            {/* Form Input Produk & Script */}
             <div className="glass-card rounded-2xl p-6">
               <h2 className="font-bold text-sm text-white mb-4 border-b border-white/10 pb-2">
-                {editingId ? 'EDIT SCRIPT' : 'TAMBAH SCRIPT BARU'}
+                {editingId ? 'EDIT INFORMASI PRODUK' : 'TAMBAH PRODUK / SCRIPT BARU'}
               </h2>
               <form onSubmit={handleSubmitScript} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Judul Game (misal: Evade)" value={title} onChange={(e) => setTitle(e.target.value)} required className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                  <div>
+                    <label className="block text-xs font-mono text-gray-400 mb-1">Nama Produk / Game</label>
+                    <input type="text" placeholder="misal: Blox Fruits Hub" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-gray-400 mb-1">Harga (IDR / Robux)</label>
+                    <input type="number" placeholder="misal: 15000" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-gray-400 mb-1">Lencana / Badge Custom</label>
+                    <input type="text" placeholder="misal: HOT, BEST, PROMO, FREE" value={badgeText} onChange={(e) => setBadgeText(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <input type="text" placeholder="Place ID (misal: 9872472334)" value={placeId} onChange={(e) => setPlaceId(e.target.value)} required className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
-                  
+                  <input type="text" placeholder="Developer / Author Name" value={developerName} onChange={(e) => setDeveloperName(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
                   <select value={status} onChange={(e) => setStatus(e.target.value)} className="bg-black border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none">
-                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="ACTIVE font-bold text-green-400">ACTIVE</option>
                     <option value="DISABLED">DISABLED</option>
                     <option value="MAINTENANCE">MAINTENANCE</option>
                   </select>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Nama Developer/Group (opsional)" value={developerName} onChange={(e) => setDeveloperName(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
                   <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                     <label className="text-xs text-gray-300 font-mono flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={isVerified} onChange={(e) => setIsVerified(e.target.checked)} className="w-4 h-4 accent-white" />
                       Verified Badge (Centang)
                     </label>
                   </div>
-                  <input type="number" placeholder="Executions Card Ini" value={executions} onChange={(e) => setExecutions(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                  <input type="number" placeholder="Executions Count" value={executions} onChange={(e) => setExecutions(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                  <input type="text" placeholder="Versi (misal: v2.1.0)" value={version} onChange={(e) => setVersion(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Versi (misal: v1.0.0)" value={version} onChange={(e) => setVersion(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
-                  <input type="text" placeholder="Deskripsi Ringkas Script" value={description} onChange={(e) => setDescription(e.target.value)} required className="sm:col-span-2 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none" />
+                <div>
+                  <textarea rows="3" placeholder="Deskripsi Ringkas Produk / Script..." value={description} onChange={(e) => setDescription(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none resize-none" />
                 </div>
 
                 <div className="flex gap-3">
                   <button type="submit" className="px-6 py-3 bg-white text-black font-extrabold text-xs rounded-xl hover:bg-gray-200 transition">
-                    SIMPAN SCRIPT
+                    SIMPAN PRODUK
                   </button>
                   {editingId && (
                     <button type="button" onClick={resetForm} className="px-6 py-3 bg-white/10 text-white font-extrabold text-xs rounded-xl hover:bg-white/20 transition">
@@ -554,15 +599,16 @@ export default function AdminPanel({ onNavigate }) {
               </form>
             </div>
 
-            {/* Tabel Collection */}
+            {/* Tabel Katalog */}
             <div className="glass-card rounded-2xl p-6 overflow-x-auto">
-              <h2 className="font-bold text-sm text-white mb-4 border-b border-white/10 pb-2">DAFTAR SCRIPT HUB</h2>
+              <h2 className="font-bold text-sm text-white mb-4 border-b border-white/10 pb-2">DAFTAR KATALOG PRODUK</h2>
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/10 font-mono text-xs text-gray-400">
-                    <th className="py-2">Judul</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2">Harga</th>
+                    <th className="py-2">Badge</th>
                     <th className="py-2">Status</th>
-                    <th className="py-2">Visibility</th>
                     <th className="py-2 text-right">Aksi</th>
                   </tr>
                 </thead>
@@ -570,13 +616,18 @@ export default function AdminPanel({ onNavigate }) {
                   {scripts.map((s) => (
                     <tr key={s.id} className="border-b border-white/5">
                       <td className="py-3 font-bold">{s.title}</td>
+                      <td className="py-3 font-mono text-xs text-emerald-400">
+                        {s.price > 0 ? `Rp ${s.price.toLocaleString('id-ID')}` : 'Gratis'}
+                      </td>
+                      <td className="py-3">
+                        <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/30">
+                          {s.badge_text || 'HOT'}
+                        </span>
+                      </td>
                       <td className="py-3 font-mono text-xs">
                         <span className={`px-2 py-0.5 rounded border ${s.status === 'ACTIVE' ? 'border-emerald-500/30 text-emerald-400' : 'border-gray-700 text-gray-500'}`}>
                           {s.status}
                         </span>
-                      </td>
-                      <td className="py-3 font-mono text-xs">
-                        {s.is_archived ? <span className="text-amber-400">[Archived]</span> : <span className="text-gray-500">[Public]</span>}
                       </td>
                       <td className="py-3 text-right space-x-2">
                         <button onClick={() => toggleArchive(s)} className="px-3 py-1 font-bold text-xs rounded bg-white/10 text-gray-300 hover:bg-white/20">
@@ -622,4 +673,4 @@ export default function AdminPanel({ onNavigate }) {
       </div>
     </div>
   );
-    }
+}
