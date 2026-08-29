@@ -2,10 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .glass-card {
+    background: rgba(18, 18, 22, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  }
+}
+
 body {
-  background-color: #fff0f4;
-  background-image: radial-gradient(#ffd6e4 1px, transparent 1px);
-  background-size: 20px 20px;
-  color: #1f2937;
+  background-color: #0c0d10;
+  color: #f3f4f6;
   font-family: 'Geist', sans-serif;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Glowing Animated Background Blur Orbs */
+body::before, body::after {
+  content: '';
+  position: fixed;
+  width: 350px;
+  height: 350px;
+  border-radius: 50%;
+  filter: blur(90px);
+  z-index: -1;
+  opacity: 0.25;
+  animation: pulseOrb 8s infinite alternate ease-in-out;
+}
+
+body::before {
+  background: #ffffff;
+  top: -50px;
+  left: -50px;
+}
+
+body::after {
+  background: #3f3f46;
+  bottom: -50px;
+  right: -50px;
+  animation-delay: 4s;
+}
+
+@keyframes pulseOrb {
+  0% { transform: scale(1) translate(0, 0); }
+  50% { transform: scale(1.2) translate(30px, -20px); }
+  100% { transform: scale(0.9) translate(-20px, 30px); }
 }
